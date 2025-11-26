@@ -196,8 +196,22 @@
 	<string name="info_sample_rate_32k"><b>32kHz</b> is a bit better than 22kHz.</string>
 	<string name="info_sample_rate_44k"><b>44,1kHz</b> is the sampling rate of Audio CDs. <b>(recommended)</b></string>
 	<string name="info_sample_rate_48k"><b>48kHz</b> is the sample rate used for DVDs.</string>
+	<string name="info_audio_source_mic"><b>Microphone</b> - standard microphone audio source. <b>(recommended)</b></string>
+	<string name="info_audio_source_voice_comm"><b>Voice communication</b> - voice call recording optimized for communication.</string>
+	<string name="info_audio_source_voice_recog"><b>Voice recognition</b> - optimized for voice recognition tasks.</string>
+	<string name="info_audio_source_camcorder"><b>Camcorder</b> - typically used when recording video with audio.</string>
 	<string name="recording_format">Recording format:</string>
 	<string name="bitrate">Bitrate:</string>
+	<string name="audio_source">Audio source:</string>
+	<string name="info_audio_source">
+		<b>Microphone</b> - standard microphone audio source. <b>(recommended)</b>
+		
+		<b>Voice communication</b> - voice call recording optimized for communication.
+		
+		<b>Voice recognition</b> - optimized for voice recognition tasks.
+		
+		<b>Camcorder</b> - typically used when recording video with audio.
+	</string>
 	<string name="channels">Channel count:</string>
 	<string name="sample_rate">Sample rate:</string>
 	<string name="size_per_min">%s Mb/min expected size</string>

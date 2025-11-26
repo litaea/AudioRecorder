@@ -323,6 +323,10 @@
 				android:id="@+id/setting_channels"
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content" />
+		<com.dimowner.audiorecorder.app.widget.SettingView
+				android:id="@+id/setting_audio_source"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content" />
 
 		<!--<TextView-->
 				<!--android:id="@+id/btnDeleteAll"-->

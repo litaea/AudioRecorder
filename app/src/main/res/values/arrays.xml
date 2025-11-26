@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="audio_sources">
+        <item>@string/info_audio_source_mic</item>
+        <item>@string/info_audio_source_voice_comm</item>
+        <item>@string/info_audio_source_voice_recog</item>
+        <item>@string/info_audio_source_camcorder</item>
+    </string-array>
+</resources>
