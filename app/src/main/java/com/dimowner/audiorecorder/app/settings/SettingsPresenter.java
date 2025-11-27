@@ -112,6 +112,7 @@ public class SettingsPresenter implements SettingsContract.UserActionsListener {
 			}
 			view.showAskToRenameAfterRecordingStop(prefs.isAskToRenameAfterStopRecording());
 			view.showKeepScreenOn(prefs.isKeepScreenOn());
+			view.showRecordSystemAudio(prefs.isRecordSystemAudio());
 			view.showChannelCount(prefs.getSettingChannelCount());
 			String recordingFormatKey = prefs.getSettingRecordingFormat();
 			view.showRecordingFormat(recordingFormatKey);
@@ -143,6 +144,11 @@ public class SettingsPresenter implements SettingsContract.UserActionsListener {
 	@Override
 	public void askToRenameAfterRecordingStop(boolean b) {
 		prefs.setAskToRenameAfterStopRecording(b);
+	}
+
+	@Override
+	public void setRecordSystemAudio(boolean enabled) {
+		prefs.setRecordSystemAudio(enabled);
 	}
 
 	@Override

@@ -19,6 +19,7 @@ package com.dimowner.audiorecorder.audio.recorder;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.os.Build;
 import android.os.Handler;
 import com.dimowner.audiorecorder.AppConstants;
 import com.dimowner.audiorecorder.exception.InvalidOutputFile;
@@ -35,6 +36,7 @@ import java.nio.ByteOrder;
 import java.util.concurrent.atomic.AtomicBoolean;
 import timber.log.Timber;
 import static com.dimowner.audiorecorder.AppConstants.RECORDING_VISUALIZATION_INTERVAL;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.RequiresPermission;
 
 public class WavRecorder implements RecorderContract.Recorder {
@@ -360,5 +362,15 @@ public class WavRecorder implements RecorderContract.Recorder {
 	private void pauseRecordingTimer() {
 		handler.removeCallbacksAndMessages(null);
 		updateTime = 0;
+	}
+
+	@RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+	@Override
+	public void startSystemAudioRecording(android.media.projection.MediaProjection projection, String outputFile,
+	                                       int channelCount, int sampleRate, int bitrate) {
+		// WAV format doesn't support system audio recording via MediaProjection
+		// Fallback to normal microphone recording
+		Timber.w("WAV format doesn't support system audio recording, using microphone instead");
+		startRecording(outputFile, channelCount, sampleRate, bitrate);
 	}
 }

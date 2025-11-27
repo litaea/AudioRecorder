@@ -36,6 +36,8 @@ public class SettingsContract {
 
 		void showAskToRenameAfterRecordingStop(boolean b);
 
+		void showRecordSystemAudio(boolean b);
+
 		void showRecordingBitrate(int bitrate);
 
 		void showRecordingSampleRate(int rate);
@@ -83,6 +85,8 @@ public class SettingsContract {
 		void keepScreenOn(boolean b);
 
 		void askToRenameAfterRecordingStop(boolean b);
+
+		void setRecordSystemAudio(boolean enabled);
 
 		void setSettingRecordingBitrate(int bitrate);
 

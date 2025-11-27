@@ -74,6 +74,7 @@ public class SettingsActivity extends Activity implements SettingsContract.View,
 	private Switch swPublicDir;
 	private Switch swKeepScreenOn;
 	private Switch swAskToRename;
+	private Switch swRecordSystemAudio;
 
 	private Spinner nameFormatSelector;
 
@@ -149,6 +150,7 @@ public class SettingsActivity extends Activity implements SettingsContract.View,
 		swPublicDir = findViewById(R.id.swPublicDir);
 		swKeepScreenOn = findViewById(R.id.swKeepScreenOn);
 		swAskToRename = findViewById(R.id.swAskToRename);
+		swRecordSystemAudio = findViewById(R.id.swRecordSystemAudio);
 
 		txtRecordsCount = findViewById(R.id.txt_records_count);
 		txtTotalDuration= findViewById(R.id.txt_total_duration);
@@ -158,6 +160,7 @@ public class SettingsActivity extends Activity implements SettingsContract.View,
 
 		swKeepScreenOn.setOnCheckedChangeListener((btn, isChecked) -> presenter.keepScreenOn(isChecked));
 		swAskToRename.setOnCheckedChangeListener((btn, isChecked) -> presenter.askToRenameAfterRecordingStop(isChecked));
+		swRecordSystemAudio.setOnCheckedChangeListener((btn, isChecked) -> presenter.setRecordSystemAudio(isChecked));
 
 		formatSetting = findViewById(R.id.setting_recording_format);
 		formats = getResources().getStringArray(R.array.formats2);
@@ -433,6 +436,11 @@ public class SettingsActivity extends Activity implements SettingsContract.View,
 	@Override
 	public void showAskToRenameAfterRecordingStop(boolean b) {
 		swAskToRename.setChecked(b);
+	}
+
+	@Override
+	public void showRecordSystemAudio(boolean b) {
+		swRecordSystemAudio.setChecked(b);
 	}
 
 	@Override

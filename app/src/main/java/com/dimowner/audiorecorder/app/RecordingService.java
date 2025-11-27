@@ -72,6 +72,7 @@ public class RecordingService extends Service {
 	private final static String CHANNEL_ID_ERRORS = "com.dimowner.audiorecorder.Errors";
 
 	public static final String EXTRAS_KEY_RECORD_PATH = "EXTRAS_KEY_RECORD_PATH";
+	public static final String EXTRAS_KEY_RECORD_SYSTEM_AUDIO = "EXTRAS_KEY_RECORD_SYSTEM_AUDIO";
 	public static final String ACTION_START_RECORDING_SERVICE = "ACTION_START_RECORDING_SERVICE";
 
 	public static final String ACTION_STOP_RECORDING_SERVICE = "ACTION_STOP_RECORDING_SERVICE";
@@ -96,6 +97,9 @@ public class RecordingService extends Service {
 	private ColorMap colorMap;
 	private boolean started = false;
 	private FileRepository fileRepository;
+	private boolean isSystemAudioRecording = false;
+	private String pendingRecordingPath = null;
+	private boolean isSystemAudioRecordingAttempt = false;
 
 	public RecordingService() {
 	}
@@ -123,6 +127,9 @@ public class RecordingService extends Service {
 			boolean checkHasSpace = true;
 
 			@Override public void onRecordingStarted(File file) {
+				Timber.d("Recording started successfully, clearing pending path");
+				pendingRecordingPath = null;
+				isSystemAudioRecordingAttempt = false;
 				updateNotificationResume();
 			}
 			@Override public void onRecordingPaused() {
@@ -163,8 +170,37 @@ public class RecordingService extends Service {
 			}
 
 			@Override public void onError(AppException throwable) {
-				showError(ErrorParser.parseException(throwable));
-				stopForegroundService();
+				Timber.e("Recording error: %s, isSystemAudioAttempt: %s", throwable.getClass().getSimpleName(), isSystemAudioRecordingAttempt);
+				
+				// If system audio recording failed, try to fallback to microphone
+				if (isSystemAudioRecordingAttempt && pendingRecordingPath != null && !appRecorder.isRecording()) {
+					Timber.d("System audio recording failed, attempting fallback to microphone");
+					isSystemAudioRecordingAttempt = false;
+					
+					// Clear the failed MediaProjection
+					ARApplication.mediaProjection = null;
+					
+					// Try to start normal microphone recording
+					try {
+						Record record = localRepository.insertEmptyFile(pendingRecordingPath);
+						prefs.setActiveRecord(record.getId());
+						recordDataSource.setRecordingRecord(record);
+						appRecorder.startRecording(pendingRecordingPath,
+							prefs.getSettingChannelCount(),
+							prefs.getSettingSampleRate(),
+							prefs.getSettingBitrate());
+						Timber.d("Fallback to microphone recording started");
+						pendingRecordingPath = null;
+					} catch (Exception e) {
+						Timber.e(e, "Failed to start fallback microphone recording");
+						showError(ErrorParser.parseException(throwable));
+						stopForegroundService();
+						pendingRecordingPath = null;
+					}
+				} else {
+					showError(ErrorParser.parseException(throwable));
+					stopForegroundService();
+				}
 			}
 		};
 		appRecorder.addRecordingCallback(appRecorderCallback);
@@ -198,9 +234,11 @@ public class RecordingService extends Service {
 				switch (action) {
 					case ACTION_START_RECORDING_SERVICE:
 						if (!started) {
+							boolean systemAudio = intent.getBooleanExtra(EXTRAS_KEY_RECORD_SYSTEM_AUDIO, false);
+							isSystemAudioRecording = systemAudio;
 							startForegroundService();
 							if (intent.hasExtra(EXTRAS_KEY_RECORD_PATH)) {
-								startRecording(intent.getStringExtra(EXTRAS_KEY_RECORD_PATH));
+								startRecording(intent.getStringExtra(EXTRAS_KEY_RECORD_PATH), systemAudio);
 							} else {
 								showError(ErrorParser.parseException(new RecorderInitException()));
 								stopForegroundService();
@@ -291,7 +329,22 @@ public class RecordingService extends Service {
 		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
 			startForeground(NOTIF_ID, buildNotification());
 		} else {
-			startForeground(NOTIF_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+			int serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+			if (isSystemAudioRecording && Build.VERSION.SDK_INT >= 34) { // Android 14 (API 34)
+				// Android 14+ requires both microphone and mediaProjection types for system audio recording
+				// FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION = 0x00000020 (API 34+)
+				try {
+					java.lang.reflect.Field field = ServiceInfo.class.getField("FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION");
+					int mediaProjectionType = field.getInt(null);
+					serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE | mediaProjectionType;
+				} catch (Exception e) {
+					// Fallback: use constant value directly (0x00000020)
+					int mediaProjectionType = 0x00000020;
+					serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE | mediaProjectionType;
+					Timber.d("Using reflection fallback for FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION");
+				}
+			}
+			startForeground(NOTIF_ID, buildNotification(), serviceType);
 		}
 		started = true;
 	}
@@ -415,6 +468,10 @@ public class RecordingService extends Service {
 	}
 
 	private void startRecording(String path) {
+		startRecording(path, false);
+	}
+	
+	private void startRecording(String path, boolean systemAudio) {
 		appRecorder.setRecorder(recorder);
 		try {
 			if (fileRepository.hasAvailableSpace(getApplicationContext())) {
@@ -430,12 +487,104 @@ public class RecordingService extends Service {
 							Record record = localRepository.insertEmptyFile(path);
 							prefs.setActiveRecord(record.getId());
 							recordDataSource.setRecordingRecord(record);
-							AndroidUtils.runOnUIThread(() -> appRecorder.startRecording(
-									path,
-									prefs.getSettingChannelCount(),
-									prefs.getSettingSampleRate(),
-									prefs.getSettingBitrate()
-							));
+							final boolean useSystemAudio = systemAudio;
+							
+							// Store path for potential fallback
+							if (useSystemAudio) {
+								pendingRecordingPath = path;
+								isSystemAudioRecordingAttempt = true;
+							}
+							
+							AndroidUtils.runOnUIThread(() -> {
+								// IMPORTANT: If NOT using system audio, ensure MediaProjection is cleared
+								if (!useSystemAudio && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+									if (ARApplication.mediaProjection != null) {
+										Timber.d("Normal recording: clearing existing MediaProjection to prevent system audio mixing");
+										try {
+											ARApplication.mediaProjection.stop();
+										} catch (Exception e) {
+											Timber.e(e, "Error stopping MediaProjection");
+										}
+										ARApplication.mediaProjection = null;
+									}
+								}
+								
+								if (useSystemAudio && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+									android.media.projection.MediaProjection projection = ARApplication.mediaProjection;
+									Timber.d("Starting system audio recording: projection=%s, recorder type=%s", 
+										projection != null ? "not null" : "null", 
+										recorder != null ? recorder.getClass().getSimpleName() : "null");
+									
+									boolean systemAudioStarted = false;
+									if (projection != null && recorder instanceof com.dimowner.audiorecorder.audio.recorder.AudioRecorder) {
+										try {
+											Timber.d("Calling startSystemAudioRecording...");
+											((com.dimowner.audiorecorder.audio.recorder.AudioRecorder) recorder)
+												.startSystemAudioRecording(projection, path,
+													prefs.getSettingChannelCount(),
+													prefs.getSettingSampleRate(),
+													prefs.getSettingBitrate());
+											Timber.d("startSystemAudioRecording call completed");
+											
+											// Wait a bit and check if recording actually started
+											new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+												if (!appRecorder.isRecording()) {
+													Timber.w("System audio recording did not start after delay, falling back to microphone");
+													isSystemAudioRecordingAttempt = false;
+													// Fallback to normal recording
+													try {
+														appRecorder.startRecording(path,
+															prefs.getSettingChannelCount(),
+															prefs.getSettingSampleRate(),
+															prefs.getSettingBitrate());
+														pendingRecordingPath = null;
+													} catch (Exception e2) {
+														Timber.e(e2, "Failed to start fallback recording");
+														showError(R.string.error_failed_to_start_recording);
+														pendingRecordingPath = null;
+													}
+												} else {
+													Timber.d("System audio recording started successfully");
+													pendingRecordingPath = null;
+													isSystemAudioRecordingAttempt = false;
+												}
+											}, 500); // Wait 500ms to check
+											systemAudioStarted = true;
+										} catch (Exception e) {
+											Timber.e(e, "Exception in startSystemAudioRecording: %s", e.getMessage());
+											e.printStackTrace();
+											systemAudioStarted = false;
+										}
+									} else {
+										Timber.w("MediaProjection is null or recorder is not AudioRecorder, using microphone. projection=%s, recorder=%s", 
+											projection != null, recorder != null);
+										systemAudioStarted = false;
+									}
+									
+									if (!systemAudioStarted) {
+										isSystemAudioRecordingAttempt = false;
+										// Fallback to normal recording
+										try {
+											appRecorder.startRecording(path,
+												prefs.getSettingChannelCount(),
+												prefs.getSettingSampleRate(),
+												prefs.getSettingBitrate());
+											pendingRecordingPath = null;
+										} catch (Exception e) {
+											Timber.e(e, "Failed to start fallback recording");
+											showError(R.string.error_failed_to_start_recording);
+											pendingRecordingPath = null;
+										}
+									}
+								} else {
+									Timber.d("Using normal microphone recording (systemAudio=%s, SDK=%d)", 
+										useSystemAudio, Build.VERSION.SDK_INT);
+									appRecorder.startRecording(path,
+										prefs.getSettingChannelCount(),
+										prefs.getSettingSampleRate(),
+										prefs.getSettingBitrate());
+								}
+							});
 						} catch (IOException | OutOfMemoryError | IllegalStateException | NullPointerException e) {
 							Timber.e(e);
 							showError(R.string.error_failed_to_start_recording);

@@ -74,8 +74,19 @@ android {
 		targetCompatibility = JavaVersion.VERSION_17
 	}
 
+	kotlinOptions {
+		jvmTarget = '17'
+	}
+
 	lintOptions {
 		abortOnError false
+	}
+}
+
+kapt {
+	javacOptions {
+		option("-source", "17")
+		option("-target", "17")
 	}
 }
 

@@ -72,5 +72,8 @@ public interface Prefs {
 	void setSettingChannelCount(int count);
 	int getSettingChannelCount();
 
+	void setRecordSystemAudio(boolean enabled);
+	boolean isRecordSystemAudio();
+
 	void resetSettings();
 }

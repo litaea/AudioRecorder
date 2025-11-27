@@ -20,6 +20,8 @@ import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.Handler;
 
+import androidx.annotation.RequiresApi;
+
 import com.dimowner.audiorecorder.exception.InvalidOutputFile;
 import com.dimowner.audiorecorder.exception.RecorderInitException;
 
@@ -204,5 +206,15 @@ public class ThreeGpRecorder implements RecorderContract.Recorder {
 	@Override
 	public boolean isPaused() {
 		return isPaused.get();
+	}
+
+	@RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+	@Override
+	public void startSystemAudioRecording(android.media.projection.MediaProjection projection, String outputFile,
+	                                      int channelCount, int sampleRate, int bitrate) {
+		// 3GP format doesn't support system audio recording via MediaProjection
+		// Fallback to normal microphone recording
+		Timber.w("3GP format doesn't support system audio recording, using microphone instead");
+		startRecording(outputFile, channelCount, sampleRate, bitrate);
 	}
 }

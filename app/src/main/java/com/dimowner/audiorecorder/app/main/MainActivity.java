@@ -25,6 +25,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
+import android.media.projection.MediaProjection;
+import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -60,6 +62,7 @@ import com.dimowner.audiorecorder.app.widget.RecordingWaveformView;
 import com.dimowner.audiorecorder.app.widget.WaveformViewNew;
 import com.dimowner.audiorecorder.audio.AudioDecoder;
 import com.dimowner.audiorecorder.data.FileRepository;
+import com.dimowner.audiorecorder.data.Prefs;
 import com.dimowner.audiorecorder.data.database.Record;
 import com.dimowner.audiorecorder.exception.CantCreateFileException;
 import com.dimowner.audiorecorder.exception.ErrorParser;
@@ -90,6 +93,7 @@ public class MainActivity extends Activity implements MainContract.View, View.On
 	public static final int REQ_CODE_READ_EXTERNAL_STORAGE_DOWNLOAD = 407;
 	public static final int REQ_CODE_POST_NOTIFICATIONS = 408;
 	public static final int REQ_CODE_IMPORT_AUDIO = 11;
+	public static final int REQ_CODE_MEDIA_PROJECTION = 1000;
 
 	private WaveformViewNew waveformView;
 	private RecordingWaveformView recordingWaveformView;
@@ -114,6 +118,8 @@ public class MainActivity extends Activity implements MainContract.View, View.On
 	private ColorMap colorMap;
 	private FileRepository fileRepository;
 	private ColorMap.OnThemeColorChangeListener onThemeColorChangeListener;
+	private MediaProjectionManager projectionManager;
+	private MediaProjection mediaProjection;
 
 	private final ServiceConnection connection = new ServiceConnection() {
 
@@ -221,6 +227,11 @@ public class MainActivity extends Activity implements MainContract.View, View.On
 
 		presenter = ARApplication.getInjector().provideMainPresenter(getApplicationContext());
 		fileRepository = ARApplication.getInjector().provideFileRepository(getApplicationContext());
+		
+		// Initialize MediaProjectionManager for system audio recording
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+			projectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+		}
 
 		waveformView.setOnSeekListener(new WaveformViewNew.OnSeekListener() {
 			@Override
@@ -257,10 +268,22 @@ public class MainActivity extends Activity implements MainContract.View, View.On
 
 		//Check start recording shortcut
 		if ("android.intent.action.ACTION_RUN".equals(getIntent().getAction())) {
-			if (checkRecordPermission2()) {
+			Prefs prefs = ARApplication.getInjector().providePrefs(getApplicationContext());
+			boolean isSystemAudio = prefs.isRecordSystemAudio();
+			
+			// Only check microphone permission if NOT using system audio recording
+			if (isSystemAudio) {
+				// System audio recording: no microphone permission needed
 				if (checkStoragePermission2()) {
-					//Start or stop recording
 					startRecordingService();
+				}
+			} else {
+				// Normal microphone recording: check microphone permission
+				if (checkRecordPermission2()) {
+					if (checkStoragePermission2()) {
+						//Start or stop recording
+						startRecordingService();
+					}
 				}
 			}
 		}
@@ -306,11 +329,25 @@ public class MainActivity extends Activity implements MainContract.View, View.On
 		if (id == R.id.btn_play) {
 			presenter.onPlaybackClick(getApplicationContext(), checkStoragePermissionPlayback());
 		} else if (id == R.id.btn_record) {
-			if (checkRecordPermission2()) {
+			// Check if system audio recording is enabled
+			Prefs prefs = ARApplication.getInjector().providePrefs(getApplicationContext());
+			boolean isSystemAudio = prefs.isRecordSystemAudio();
+			
+			// Only check microphone permission if NOT using system audio recording
+			if (isSystemAudio) {
+				// System audio recording: no microphone permission needed
 				if (checkStoragePermission2()) {
-					//Start or stop recording
 					startRecordingService();
 					presenter.pauseUnpauseRecording(getApplicationContext());
+				}
+			} else {
+				// Normal microphone recording: check microphone permission
+				if (checkRecordPermission2()) {
+					if (checkStoragePermission2()) {
+						//Start or stop recording
+						startRecordingService();
+						presenter.pauseUnpauseRecording(getApplicationContext());
+					}
 				}
 			}
 		} else if (id == R.id.btn_record_stop) {
@@ -355,6 +392,36 @@ public class MainActivity extends Activity implements MainContract.View, View.On
 		super.onActivityResult(requestCode, resultCode, data);
 		if (requestCode == REQ_CODE_IMPORT_AUDIO && resultCode == RESULT_OK){
 			presenter.importAudioFile(getApplicationContext(), data.getData());
+		} else if (requestCode == REQ_CODE_MEDIA_PROJECTION) {
+			if (resultCode == RESULT_OK) {
+				if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && projectionManager != null && data != null) {
+					try {
+						mediaProjection = projectionManager.getMediaProjection(resultCode, data);
+						if (mediaProjection != null) {
+							// Save MediaProjection to ARApplication for use in RecordingService
+							ARApplication.mediaProjection = mediaProjection;
+							// Start recording with system audio
+							startRecordingServiceWithSystemAudio();
+						} else {
+							Timber.e("Failed to get MediaProjection");
+							showError(R.string.error_failed_to_start_recording);
+							startRecordingServiceNormal();
+						}
+					} catch (Exception e) {
+						Timber.e(e, "Error getting MediaProjection");
+						showError(R.string.error_failed_to_start_recording);
+						startRecordingServiceNormal();
+					}
+				} else {
+					Timber.e("MediaProjectionManager is null or data is null");
+					startRecordingServiceNormal();
+				}
+			} else {
+				// User cancelled or denied permission
+				Timber.d("User cancelled MediaProjection permission");
+				showError(R.string.error_permission_denied);
+				startRecordingServiceNormal();
+			}
 		}
 	}
 
@@ -506,11 +573,62 @@ public class MainActivity extends Activity implements MainContract.View, View.On
 
 	@Override
 	public void startRecordingService() {
+		// Check if system audio recording is enabled
+		Prefs prefs = ARApplication.getInjector().providePrefs(getApplicationContext());
+		if (prefs.isRecordSystemAudio() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+			// Request MediaProjection permission for system audio recording
+			if (projectionManager != null) {
+				startActivityForResult(
+					projectionManager.createScreenCaptureIntent(),
+					REQ_CODE_MEDIA_PROJECTION
+				);
+			} else {
+				// Fallback to normal recording if MediaProjectionManager is not available
+				startRecordingServiceNormal();
+			}
+		} else {
+			// Normal microphone recording
+			startRecordingServiceNormal();
+		}
+	}
+	
+	private void startRecordingServiceNormal() {
+		// IMPORTANT: Clear any existing MediaProjection before normal recording
+		// This ensures that normal microphone recording doesn't capture system audio
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+			if (ARApplication.mediaProjection != null) {
+				Timber.d("Clearing existing MediaProjection before normal recording");
+				try {
+					ARApplication.mediaProjection.stop();
+				} catch (Exception e) {
+					Timber.e(e, "Error stopping MediaProjection");
+				}
+				ARApplication.mediaProjection = null;
+			}
+			// Also clear local reference
+			mediaProjection = null;
+		}
+		
 		try {
 			String path = fileRepository.provideRecordFile().getAbsolutePath();
 			Intent intent = new Intent(getApplicationContext(), RecordingService.class);
 			intent.setAction(RecordingService.ACTION_START_RECORDING_SERVICE);
 			intent.putExtra(RecordingService.EXTRAS_KEY_RECORD_PATH, path);
+			// Explicitly set system audio to false
+			intent.putExtra(RecordingService.EXTRAS_KEY_RECORD_SYSTEM_AUDIO, false);
+			startService(intent);
+		} catch (CantCreateFileException e) {
+			showError(ErrorParser.parseException(e));
+		}
+	}
+	
+	private void startRecordingServiceWithSystemAudio() {
+		try {
+			String path = fileRepository.provideRecordFile().getAbsolutePath();
+			Intent intent = new Intent(getApplicationContext(), RecordingService.class);
+			intent.setAction(RecordingService.ACTION_START_RECORDING_SERVICE);
+			intent.putExtra(RecordingService.EXTRAS_KEY_RECORD_PATH, path);
+			intent.putExtra(RecordingService.EXTRAS_KEY_RECORD_SYSTEM_AUDIO, true);
 			startService(intent);
 		} catch (CantCreateFileException e) {
 			showError(ErrorParser.parseException(e));

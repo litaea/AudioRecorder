@@ -10,6 +10,8 @@
 	<string name="store_records_public">Store records in a public dir</string>
 	<string name="record_in_stereo">Record in Stereo</string>
 	<string name="keep_screen_on">Keep screen ON while recording</string>
+	<string name="record_system_audio">Record system audio</string>
+	<string name="record_system_audio_info">Record system audio (music, videos, etc.) instead of microphone. Requires screen recording permission.</string>
 	<string name="total_duration">Total recorded duration: %s</string>
 	<string name="total_record_count">Total records count: %d</string>
 	<string name="available_space">Available space: %s</string>

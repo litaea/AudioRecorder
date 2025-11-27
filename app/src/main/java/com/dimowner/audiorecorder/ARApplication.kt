@@ -178,6 +178,12 @@ class ARApplication : Application() {
         private var screenWidthDp = 0f
         @JvmStatic
 		var injector = Injector()
+        
+        // MediaProjection for system audio recording
+        @JvmField
+        @Volatile
+        var mediaProjection: android.media.projection.MediaProjection? = null
+        
         @JvmStatic
 		fun appPackage(): String? {
             return PACKAGE_NAME

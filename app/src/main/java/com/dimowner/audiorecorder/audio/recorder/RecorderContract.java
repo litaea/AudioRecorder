@@ -16,6 +16,10 @@
 
 package com.dimowner.audiorecorder.audio.recorder;
 
+import android.media.projection.MediaProjection;
+
+import androidx.annotation.RequiresApi;
+
 import com.dimowner.audiorecorder.exception.AppException;
 
 import java.io.File;
@@ -34,6 +38,11 @@ public interface RecorderContract {
 	interface Recorder {
 		void setRecorderCallback(RecorderCallback callback);
 		void startRecording(String outputFile, int channelCount, int sampleRate, int bitrate);
+		
+		@RequiresApi(android.os.Build.VERSION_CODES.LOLLIPOP)
+		void startSystemAudioRecording(MediaProjection mediaProjection, String outputFile, 
+		                                int channelCount, int sampleRate, int bitrate);
+		
 		void resumeRecording();
 		void pauseRecording();
 		void stopRecording();
